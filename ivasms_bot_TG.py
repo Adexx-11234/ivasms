@@ -7,20 +7,20 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, SessionNotCreatedException, WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 import os
 import json
 
 # ==========================================
-# ⚙️ Configuration
+# Configuration
 # ==========================================
 API_ID = int(os.environ.get('API_ID', 33419175))
 API_HASH = os.environ.get('API_HASH', '556aa0a8ac62e9cb31ca8b4a9b390d3f')
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '7965752854:AAEOnQpVt00ZwiHkJFOpheShMOrSkRiWUOw')
-TARGET_TELEGRAM_ID = int(os.environ.get('TARGET_TELEGRAM_ID', -1003424776166))
-DEVELOPER_NAME = os.environ.get('DEVELOPER_NAME', "RoBoT")
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '8731084809:AAHocpvW1ckCo4FdCDTJ5hzaAl156F5eiOQ')
+TARGET_TELEGRAM_ID = int(os.environ.get('TARGET_TELEGRAM_ID', -1003857054415))
+DEVELOPER_NAME = os.environ.get('DEVELOPER_NAME', "X~DeV")
 
-ACCOUNTS_JSON = os.environ.get('ACCOUNTS', '[{"name":"Panel_1","email":"alisasmi.th338@gmail.com","pass":"alisasmi.th338@gmail.com"}]')
+ACCOUNTS_JSON = os.environ.get('ACCOUNTS', '[{"name":"Panel_1","email":"mohamedsamy3450@gmail.com","pass":"0102068678Soso"}]')
 ACCOUNTS = json.loads(ACCOUNTS_JSON)
 
 IVASMS_LOGIN_URL = "https://ivasms.com/login"
@@ -31,173 +31,184 @@ PROCESSED_SIGNATURES = set()
 bot = TelegramClient('ivasms_scraper_bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 # ==========================================
-# Browser Setup
+# Browser Setup - النسخة المصححة
 # ==========================================
 def start_browser(panel_name):
     options = uc.ChromeOptions()
-    options.add_argument("--no-first-run")
-    options.add_argument("--password-store=basic")
-    options.add_argument("--disable-popup-blocking")
-    options.add_argument("--disable-infobars")
+    
+    # الخيارات الأساسية فقط - بدون excludeSwitches
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1280,720")
     options.add_argument("--remote-debugging-port=9222")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-
+    
     print(f"🚀 {panel_name}: Starting Browser...")
     try:
-        driver = uc.Chrome(options=options)
-        driver.set_window_size(600, 800)
+        driver = uc.Chrome(options=options, version_main=114)  # تحديد الإصدار
         return driver
     except Exception as e:
-        print(f"\n❌ {panel_name} Error: {e}")
+        print(f"❌ {panel_name}: {e}")
         raise e
 
 # ==========================================
 # Login Functions
 # ==========================================
 def is_login_successful(driver):
-    return "portal" in driver.current_url
-
-def is_logged_in(driver):
     try:
-        WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.TAG_NAME, "table"))
-        )
         return "portal" in driver.current_url
     except:
         return False
 
-def enter_credentials_and_submit(driver, panel_name, email, password):
-    wait = WebDriverWait(driver, 10)
-    wait.until(EC.presence_of_element_located((By.NAME, "email"))).send_keys(email)
-    driver.find_element(By.NAME, "password").send_keys(password)
-    login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
-    driver.execute_script("arguments[0].click();", login_btn)
-    print(f"✅ {panel_name}: Credentials submitted.")
+def login_ivasms(driver, panel_name, email, password):
+    print(f"🌍 {panel_name}: Logging in...")
+    
+    for attempt in range(1, 4):
+        try:
+            driver.get(IVASMS_LOGIN_URL)
+            time.sleep(3)
+            
+            # إدخال الإيميل
+            email_field = driver.find_element(By.NAME, "email")
+            email_field.clear()
+            email_field.send_keys(email)
+            
+            # إدخال الباسورد
+            pass_field = driver.find_element(By.NAME, "password")
+            pass_field.clear()
+            pass_field.send_keys(password)
+            
+            # الضغط على زر الدخول
+            login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
+            driver.execute_script("arguments[0].click();", login_btn)
+            
+            time.sleep(5)
+            
+            if "portal" in driver.current_url:
+                print(f"✅ {panel_name}: Login successful")
+                return True
+            else:
+                print(f"⚠️ {panel_name}: Attempt {attempt} failed")
+                
+        except Exception as e:
+            print(f"⚠️ {panel_name}: Attempt {attempt} error - {e}")
+        
+        time.sleep(5)
+    
+    print(f"❌ {panel_name}: Login failed after 3 attempts")
+    return False
 
 def navigate_to_live_page(driver, panel_name):
-    print(f"🌍 {panel_name}: Navigating to Live SMS Page")
-    driver.get(IVASMS_LIVE_URL)
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.TAG_NAME, "table"))
-    )
-    print(f"✅ {panel_name}: Live page loaded successfully.")
-
-def login_ivasms(driver, panel_name, email, password):
-    for attempt in range(1, 4):
-        print(f"\n🌍 {panel_name}: Login Attempt {attempt}")
-        driver.get(IVASMS_LOGIN_URL)
-        try:
-            wait = WebDriverWait(driver, 20)
-            try:
-                cloudflare = wait.until(EC.presence_of_element_located(
-                    (By.XPATH, "//label[contains(., 'Verify you are human')]/input[@type='checkbox']")
-                ))
-                cloudflare.click()
-                wait.until(EC.presence_of_element_located((By.NAME, "email")))
-            except:
-                wait.until(EC.presence_of_element_located((By.NAME, "email")))
-            
-            enter_credentials_and_submit(driver, panel_name, email, password)
-            wait.until(is_login_successful)
-            print(f"🎉 {panel_name}: Login Successful!")
-            return
-        except Exception as e:
-            if attempt < 3:
-                print(f"⚠️ {panel_name}: Retrying...")
-                time.sleep(5)
-            else:
-                raise Exception(f"❌ {panel_name}: Failed to login")
+    print(f"🌍 {panel_name}: Going to live page...")
+    try:
+        driver.get(IVASMS_LIVE_URL)
+        time.sleep(5)
+        return True
+    except Exception as e:
+        print(f"❌ {panel_name}: Navigation error - {e}")
+        return False
 
 # ==========================================
 # Message Processing
 # ==========================================
-def extract_smart_content(full_msg):
-    otp_match = re.search(r'\b(\d{4,8})\b', full_msg)
-    if otp_match:
-        return otp_match.group(1), "OTP"
-    return full_msg, "FULL_DATA"
+def extract_otp(text):
+    match = re.search(r'\b(\d{4,8})\b', text)
+    return match.group(1) if match else None
 
 # ==========================================
-# Single Panel Scraping
+# Scraping Function
 # ==========================================
-async def scrape_single_panel(account_config):
+async def scrape_panel(account):
+    panel_name = account['name']
+    email = account['email']
+    password = account['pass']
     driver = None
-    panel_name = account_config['name']
-    email = account_config['email']
-    password = account_config['pass']
-    chat_id = TARGET_TELEGRAM_ID
-
+    
     try:
         driver = start_browser(panel_name)
-        login_ivasms(driver, panel_name, email, password)
-        navigate_to_live_page(driver, panel_name)
-
-        print(f"👀 {panel_name}: Monitoring started...")
-        await bot.send_message(chat_id, f"✅ **{panel_name} Started Monitoring**")
-
+        
+        if not login_ivasms(driver, panel_name, email, password):
+            raise Exception("Login failed")
+        
+        if not navigate_to_live_page(driver, panel_name):
+            raise Exception("Navigation failed")
+        
+        # إرسال رسالة بدء التشغيل
+        try:
+            await bot.send_message(TARGET_TELEGRAM_ID, f"✅ **{panel_name} started monitoring**")
+        except Exception as e:
+            print(f"⚠️ Telegram error: {e}")
+            print("تأكد أن البوت عضو في المجموعة وأن الآيدي صحيح")
+        
         while True:
             try:
-                if not is_logged_in(driver):
-                    print(f"🚨 {panel_name}: Session expired. Re-login...")
-                    await bot.send_message(chat_id, f"**⚠️ Session Expired:** `{panel_name}`")
-                    login_ivasms(driver, panel_name, email, password)
-                    navigate_to_live_page(driver, panel_name)
-
-                current_time = datetime.now().strftime("%H:%M:%S")
+                # تحديث الصفحة كل دورة
+                driver.refresh()
+                time.sleep(3)
+                
+                # البحث عن الرسائل
                 rows = driver.find_elements(By.XPATH, "//table/tbody/tr")
-
-                for row in rows[:5]:
+                
+                for row in rows[:10]:  # آخر 10 رسائل
                     try:
                         cols = row.find_elements(By.TAG_NAME, "td")
                         if len(cols) >= 5:
-                            phone = cols[0].text.strip().split('\n')[-1].strip()
+                            # استخراج رقم الهاتف
+                            phone_text = cols[0].text.strip()
+                            phone = phone_text.split('\n')[-1] if '\n' in phone_text else phone_text
+                            
                             service = cols[1].text.strip()
-                            full_msg = cols[4].text.strip()
-                            unique_id = f"{panel_name}_{phone}_{full_msg[:30]}"
-
-                            if unique_id not in PROCESSED_SIGNATURES:
-                                content, content_type = extract_smart_content(full_msg)
-                                print(f"-> {panel_name}: {service} - {content_type}")
-
-                                if content_type == "OTP":
-                                    msg = (f"🗝️ **OTP Received** 🗝️\n"
-                                           f"🛡️ **Panel:** `{panel_name}`\n"
-                                           f"🛡️ **Service:** `{service}`\n"
+                            message = cols[4].text.strip()
+                            
+                            # تجنب التكرار
+                            msg_id = f"{panel_name}_{phone}_{message[:50]}"
+                            
+                            if msg_id not in PROCESSED_SIGNATURES:
+                                otp = extract_otp(message)
+                                time_now = datetime.now().strftime("%H:%M:%S")
+                                
+                                # تنسيق الرسالة
+                                if otp:
+                                    msg = (f"🔑 **OTP Received**\n"
                                            f"📱 **Number:** `{phone}`\n"
-                                           f"⏳ **Time:** `{current_time}`\n"
-                                           f"🔑 **OTP:** `{content}`\n"
-                                           f"📝 **Full Message:**\n```\n{full_msg}\n```\n"
-                                           f"**Developer:** `{DEVELOPER_NAME}` 👨‍💻")
+                                           f"🛡️ **Service:** `{service}`\n"
+                                           f"🔢 **Code:** `{otp}`\n"
+                                           f"⏱️ **Time:** `{time_now}`\n"
+                                           f"📝 **Full:**\n```\n{message}\n```")
                                 else:
-                                    msg = (f"📦 **New SMS** 📦\n"
-                                           f"🛡️ **Panel:** `{panel_name}`\n"
-                                           f"🛡️ **Service:** `{service}`\n"
+                                    msg = (f"📨 **New SMS**\n"
                                            f"📱 **Number:** `{phone}`\n"
-                                           f"⏳ **Time:** `{current_time}`\n"
-                                           f"📝 **Full Message:**\n```\n{full_msg}\n```\n"
-                                           f"**Developer:** `{DEVELOPER_NAME}` 👨‍💻")
-
-                                await bot.send_message(chat_id, msg, parse_mode='markdown')
-                                PROCESSED_SIGNATURES.add(unique_id)
-                    except:
+                                           f"🛡️ **Service:** `{service}`\n"
+                                           f"⏱️ **Time:** `{time_now}`\n"
+                                           f"📝 **Message:**\n```\n{message}\n```")
+                                
+                                # محاولة إرسال الرسالة
+                                try:
+                                    await bot.send_message(TARGET_TELEGRAM_ID, msg)
+                                    PROCESSED_SIGNATURES.add(msg_id)
+                                    print(f"✅ {panel_name}: Sent new message")
+                                except Exception as e:
+                                    print(f"⚠️ {panel_name}: Failed to send - {e}")
+                                
+                                await asyncio.sleep(1)  # تجنب السبام
+                                
+                    except Exception as e:
                         continue
-
+                
+                await asyncio.sleep(5)  # انتظار 5 ثواني بين الدورات
+                
             except Exception as e:
-                print(f"Error: {e}")
-            
-            await asyncio.sleep(2)
-
+                print(f"⚠️ {panel_name}: Loop error - {e}")
+                await asyncio.sleep(10)
+                
     except Exception as e:
-        error = f"**❌ Failed for {panel_name}:**\n`{e}`"
-        print(error)
-        await bot.send_message(TARGET_TELEGRAM_ID, error)
+        error_msg = f"❌ **{panel_name} CRASHED**\n`{str(e)}`"
+        print(error_msg)
+        try:
+            await bot.send_message(TARGET_TELEGRAM_ID, error_msg)
+        except:
+            pass
     finally:
         if driver:
             try:
@@ -208,11 +219,16 @@ async def scrape_single_panel(account_config):
 # ==========================================
 # Main
 # ==========================================
-async def main_scraper():
+async def main():
     print(f"Starting {len(ACCOUNTS)} panels...")
-    tasks = [scrape_single_panel(account) for account in ACCOUNTS]
+    print(f"Sending to Telegram ID: {TARGET_TELEGRAM_ID}")
+    print("تأكد من:")
+    print("1. البوت مضاف للمجموعة كـ Admin")
+    print("2. الآيدي صحيح (يبدأ بـ -100 للمجموعات)")
+    
+    tasks = [scrape_panel(acc) for acc in ACCOUNTS]
     await asyncio.gather(*tasks)
 
 if __name__ == '__main__':
     with bot:
-        bot.loop.run_until_complete(main_scraper())
+        bot.loop.run_until_complete(main())
