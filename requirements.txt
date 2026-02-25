@@ -1,8 +1,0 @@
-telethon==1.34.0
-undetected-chromedriver==3.5.4
-selenium==4.15.0
-cryptg==0.4.0
-pyasn1==0.5.0
-cryptography==41.0.7
-nodriver
-telethon
