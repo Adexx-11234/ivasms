@@ -10,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 import os
 import json
+import sys
 
 # ==========================================
 # Configuration
@@ -27,51 +28,51 @@ IVASMS_LIVE_URL = "https://www.ivasms.com/portal/live/my_sms"
 
 PROCESSED_SIGNATURES = set()
 
+# إعداد البوت مع طباعة للتأكد من الاتصال
+print("DEBUG: Starting Telegram Client...", flush=True)
 bot = TelegramClient('ivasms_scraper_bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+print("DEBUG: Telegram Client Started.", flush=True)
 
 # ==========================================
 # Browser Setup
 # ==========================================
 def start_browser(panel_name):
+    print(f"DEBUG: Entering start_browser for {panel_name}", flush=True)
     options = uc.ChromeOptions()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
-    # استخدام User-Agent حديث جداً
+    options.add_argument("--disable-extensions")
+    options.add_argument("--window-size=1280,720")
     options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
     
-    print(f"🚀 {panel_name}: Starting Browser...")
+    print(f"🚀 {panel_name}: Initializing uc.Chrome...", flush=True)
     try:
         driver = uc.Chrome(options=options, use_subprocess=True)
         driver.set_page_load_timeout(90)
+        print(f"DEBUG: {panel_name} Browser initialized successfully", flush=True)
         return driver
     except Exception as e:
-        print(f"❌ {panel_name} Browser Error: {e}")
+        print(f"❌ {panel_name} Browser Error: {e}", flush=True)
         raise e
 
 # ==========================================
 # Login Functions
 # ==========================================
 def login_ivasms(driver, panel_name, email, password):
-    print(f"🌍 {panel_name}: Logging in...")
+    print(f"🌍 {panel_name}: Navigating to login page...", flush=True)
     
     for attempt in range(1, 4):
         try:
             driver.get(IVASMS_LOGIN_URL)
-            time.sleep(10) # وقت إضافي لتخطي أي Cloudflare Challenge
+            print(f"DEBUG: {panel_name} Page loaded, waiting for elements...", flush=True)
+            time.sleep(10)
             
-            # محاولة البحث عن حقل الإيميل بطرق مختلفة
             wait = WebDriverWait(driver, 40)
-            try:
-                email_field = wait.until(EC.presence_of_element_located((By.NAME, "email")))
-            except:
-                # إذا فشل، ربما الصفحة لم تحمل بالكامل أو هناك iframe
-                print(f"🔍 {panel_name}: Email field not found by name, trying alternative selectors...")
-                email_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='email']")))
+            email_field = wait.until(EC.presence_of_element_located((By.NAME, "email")))
 
-            print(f"📝 {panel_name}: Entering credentials...")
+            print(f"📝 {panel_name}: Entering credentials (Attempt {attempt})...", flush=True)
             email_field.clear()
             email_field.send_keys(email)
             
@@ -82,32 +83,32 @@ def login_ivasms(driver, panel_name, email, password):
             login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
             driver.execute_script("arguments[0].click();", login_btn)
             
-            time.sleep(15) # وقت كافٍ للانتقال بعد الضغط
+            print(f"DEBUG: {panel_name} Login button clicked, waiting for redirect...", flush=True)
+            time.sleep(15)
             
             if "portal" in driver.current_url:
-                print(f"✅ {panel_name}: Login successful")
+                print(f"✅ {panel_name}: Login successful", flush=True)
                 return True
             else:
-                print(f"⚠️ {panel_name}: Login failed, current URL: {driver.current_url}")
-                # حفظ لقطة شاشة للديبرج في حالة الفشل (اختياري)
-                # driver.save_screenshot(f"fail_{panel_name}_{attempt}.png")
+                print(f"⚠️ {panel_name}: Login failed, current URL: {driver.current_url}", flush=True)
                 
         except Exception as e:
-            print(f"⚠️ {panel_name}: Attempt {attempt} error - {e}")
+            print(f"⚠️ {panel_name}: Attempt {attempt} error - {e}", flush=True)
         
         time.sleep(10)
     
     return False
 
 def navigate_to_live_page(driver, panel_name):
-    print(f"🌍 {panel_name}: Navigating to live page...")
+    print(f"🌍 {panel_name}: Navigating to live page...", flush=True)
     try:
         driver.get(IVASMS_LIVE_URL)
         wait = WebDriverWait(driver, 40)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
+        print(f"DEBUG: {panel_name} Live page table found.", flush=True)
         return True
     except Exception as e:
-        print(f"❌ {panel_name}: Navigation error - {e}")
+        print(f"❌ {panel_name}: Navigation error - {e}", flush=True)
         return False
 
 # ==========================================
@@ -131,6 +132,7 @@ async def scrape_panel(account):
                 raise Exception("Could not reach live page")
             
             await bot.send_message(TARGET_TELEGRAM_ID, f"✅ **{panel_name} started monitoring**")
+            print(f"DEBUG: {panel_name} Monitoring started message sent to Telegram.", flush=True)
             
             while True:
                 try:
@@ -172,7 +174,7 @@ async def scrape_panel(account):
                                     
                                     await bot.send_message(TARGET_TELEGRAM_ID, msg)
                                     PROCESSED_SIGNATURES.add(msg_id)
-                                    print(f"✅ {panel_name}: Sent message from {phone}")
+                                    print(f"✅ {panel_name}: Sent message from {phone}", flush=True)
                                     
                         except Exception:
                             continue
@@ -183,14 +185,14 @@ async def scrape_panel(account):
                     await asyncio.sleep(15)
                     
                 except Exception as e:
-                    print(f"⚠️ {panel_name} Loop Error: {e}")
+                    print(f"⚠️ {panel_name} Loop Error: {e}", flush=True)
                     if "session" in str(e).lower() or "disconnected" in str(e).lower():
                         break
                     await asyncio.sleep(15)
                     
         except Exception as e:
             error_msg = f"❌ **{panel_name} CRASHED**\n`{str(e)}`"
-            print(error_msg)
+            print(error_msg, flush=True)
             try:
                 await bot.send_message(TARGET_TELEGRAM_ID, error_msg)
             except:
@@ -202,10 +204,11 @@ async def scrape_panel(account):
                 except:
                     pass
                 driver = None
-            print(f"🔄 {panel_name}: Restarting in 30 seconds...")
+            print(f"🔄 {panel_name}: Restarting in 30 seconds...", flush=True)
             await asyncio.sleep(30)
 
 async def main():
+    print(f"DEBUG: Starting main with {len(ACCOUNTS)} accounts", flush=True)
     tasks = [scrape_panel(acc) for acc in ACCOUNTS]
     await asyncio.gather(*tasks)
 
