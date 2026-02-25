@@ -39,13 +39,16 @@ async def scrape_panel(account):
         browser = None
         try:
             print(f"🚀 {panel_name}: Starting nodriver browser...", flush=True)
-            browser = await uc.start(headless=True, browser_args=["--no-sandbox", "--disable-dev-shm-usage"])
+            # إضافة --disable-gpu و --single-process لتقليل استهلاك الموارد في Railway
+            browser = await uc.start(headless=True, browser_args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"])
             
             print(f"🌍 {panel_name}: Navigating to login page...", flush=True)
             page = await browser.get(IVASMS_LOGIN_URL)
             
-            # انتظار تخطي Cloudflare تلقائياً (nodriver بارع في هذا)
+            # انتظار أطول لتخطي Cloudflare
             print(f"DEBUG: {panel_name} Waiting for login fields...", flush=True)
+            await asyncio.sleep(10) 
+            
             email_field = await page.select('input[name="email"]', timeout=60)
             
             if not email_field:
@@ -66,7 +69,10 @@ async def scrape_panel(account):
             
             if "portal" not in page.url:
                 print(f"⚠️ {panel_name}: Login failed, current URL: {page.url}", flush=True)
-                raise Exception("Login failed")
+                # محاولة إضافية في حال كان هناك تأخير في التوجيه
+                await asyncio.sleep(10)
+                if "portal" not in page.url:
+                    raise Exception("Login failed")
 
             print(f"✅ {panel_name}: Login successful", flush=True)
             await bot.send_message(TARGET_TELEGRAM_ID, f"✅ **{panel_name} started monitoring**")
@@ -83,6 +89,10 @@ async def scrape_panel(account):
                     # استخراج البيانات من الجدول
                     rows = await page.select_all('table tbody tr')
                     
+                    if not rows:
+                        print(f"ℹ️ {panel_name}: No messages found in table.", flush=True)
+                        continue
+
                     for row in rows[:10]:
                         try:
                             cols = await row.select_all('td')
@@ -116,7 +126,8 @@ async def scrape_panel(account):
                                     PROCESSED_SIGNATURES.add(msg_id)
                                     print(f"✅ {panel_name}: Sent message from {phone}", flush=True)
                                     
-                        except Exception:
+                        except Exception as e:
+                            print(f"⚠️ Row processing error: {e}", flush=True)
                             continue
                     
                     if len(PROCESSED_SIGNATURES) > 1000:
@@ -131,8 +142,11 @@ async def scrape_panel(account):
         except Exception as e:
             print(f"❌ {panel_name} CRASHED: {e}", flush=True)
         finally:
-            if browser:
-                await browser.stop()
+            if browser is not None:
+                try:
+                    await browser.stop()
+                except Exception as stop_err:
+                    print(f"⚠️ Error stopping browser: {stop_err}", flush=True)
             print(f"🔄 {panel_name}: Restarting in 30 seconds...", flush=True)
             await asyncio.sleep(30)
 
