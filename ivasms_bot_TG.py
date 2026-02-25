@@ -31,25 +31,28 @@ PROCESSED_SIGNATURES = set()
 bot = TelegramClient('ivasms_scraper_bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 # ==========================================
-# Browser Setup - النسخة المصححة
+# Browser Setup - النسخة المصححة للعمل على Railway
 # ==========================================
 def start_browser(panel_name):
     options = uc.ChromeOptions()
     
-    # الخيارات الأساسية فقط - بدون excludeSwitches
-    options.add_argument("--headless=new")
+    # إعدادات ضرورية للتشغيل في بيئة Docker/Railway
+    options.add_argument("--headless=new") # تشغيل بدون واجهة رسومية
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1280,720")
-    options.add_argument("--remote-debugging-port=9222")
+    options.add_argument("--window-size=1920,1080")
     
+    # إضافة User-Agent لتقليل احتمالية الكشف
+    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
     print(f"🚀 {panel_name}: Starting Browser...")
     try:
-        driver = uc.Chrome(options=options, version_main=114)  # تحديد الإصدار
+        # ملاحظة: تم حذف version_main=114 ليقوم السكريبت بتحميل الإصدار المتوافق تلقائياً
+        driver = uc.Chrome(options=options, use_subprocess=True) 
         return driver
     except Exception as e:
-        print(f"❌ {panel_name}: {e}")
+        print(f"❌ {panel_name} Browser Error: {e}")
         raise e
 
 # ==========================================
@@ -67,10 +70,13 @@ def login_ivasms(driver, panel_name, email, password):
     for attempt in range(1, 4):
         try:
             driver.get(IVASMS_LOGIN_URL)
-            time.sleep(3)
+            time.sleep(5) # زيادة وقت الانتظار للتحميل
+            
+            # انتظار ظهور حقل الإيميل للتأكد من تحميل الصفحة
+            wait = WebDriverWait(driver, 20)
+            email_field = wait.until(EC.presence_of_element_located((By.NAME, "email")))
             
             # إدخال الإيميل
-            email_field = driver.find_element(By.NAME, "email")
             email_field.clear()
             email_field.send_keys(email)
             
@@ -83,13 +89,15 @@ def login_ivasms(driver, panel_name, email, password):
             login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
             driver.execute_script("arguments[0].click();", login_btn)
             
-            time.sleep(5)
+            time.sleep(7)
             
             if "portal" in driver.current_url:
                 print(f"✅ {panel_name}: Login successful")
                 return True
             else:
-                print(f"⚠️ {panel_name}: Attempt {attempt} failed")
+                print(f"⚠️ {panel_name}: Attempt {attempt} failed - Current URL: {driver.current_url}")
+                # محاولة أخذ لقطة شاشة للديبرج (اختياري)
+                # driver.save_screenshot(f"login_failed_{panel_name}_{attempt}.png")
                 
         except Exception as e:
             print(f"⚠️ {panel_name}: Attempt {attempt} error - {e}")
@@ -103,7 +111,7 @@ def navigate_to_live_page(driver, panel_name):
     print(f"🌍 {panel_name}: Going to live page...")
     try:
         driver.get(IVASMS_LIVE_URL)
-        time.sleep(5)
+        time.sleep(7)
         return True
     except Exception as e:
         print(f"❌ {panel_name}: Navigation error - {e}")
@@ -113,6 +121,7 @@ def navigate_to_live_page(driver, panel_name):
 # Message Processing
 # ==========================================
 def extract_otp(text):
+    # تحسين استخراج الكود ليشمل أنماط أكثر
     match = re.search(r'\b(\d{4,8})\b', text)
     return match.group(1) if match else None
 
@@ -129,26 +138,26 @@ async def scrape_panel(account):
         driver = start_browser(panel_name)
         
         if not login_ivasms(driver, panel_name, email, password):
-            raise Exception("Login failed")
+            raise Exception("Login failed - Check credentials or site accessibility")
         
         if not navigate_to_live_page(driver, panel_name):
-            raise Exception("Navigation failed")
+            raise Exception("Navigation to live page failed")
         
         # إرسال رسالة بدء التشغيل
         try:
             await bot.send_message(TARGET_TELEGRAM_ID, f"✅ **{panel_name} started monitoring**")
         except Exception as e:
             print(f"⚠️ Telegram error: {e}")
-            print("تأكد أن البوت عضو في المجموعة وأن الآيدي صحيح")
         
         while True:
             try:
                 # تحديث الصفحة كل دورة
                 driver.refresh()
-                time.sleep(3)
+                time.sleep(5)
                 
-                # البحث عن الرسائل
-                rows = driver.find_elements(By.XPATH, "//table/tbody/tr")
+                # انتظار ظهور الجدول
+                wait = WebDriverWait(driver, 15)
+                rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table/tbody/tr")))
                 
                 for row in rows[:10]:  # آخر 10 رسائل
                     try:
@@ -161,7 +170,7 @@ async def scrape_panel(account):
                             service = cols[1].text.strip()
                             message = cols[4].text.strip()
                             
-                            # تجنب التكرار
+                            # تجنب التكرار باستخدام الهاتف والرسالة
                             msg_id = f"{panel_name}_{phone}_{message[:50]}"
                             
                             if msg_id not in PROCESSED_SIGNATURES:
@@ -187,20 +196,28 @@ async def scrape_panel(account):
                                 try:
                                     await bot.send_message(TARGET_TELEGRAM_ID, msg)
                                     PROCESSED_SIGNATURES.add(msg_id)
-                                    print(f"✅ {panel_name}: Sent new message")
+                                    print(f"✅ {panel_name}: Sent new message from {phone}")
                                 except Exception as e:
-                                    print(f"⚠️ {panel_name}: Failed to send - {e}")
+                                    print(f"⚠️ {panel_name}: Failed to send to Telegram - {e}")
                                 
                                 await asyncio.sleep(1)  # تجنب السبام
                                 
                     except Exception as e:
                         continue
                 
-                await asyncio.sleep(5)  # انتظار 5 ثواني بين الدورات
+                # تنظيف الـ signatures القديمة لتوفير الذاكرة (اختياري)
+                if len(PROCESSED_SIGNATURES) > 1000:
+                    PROCESSED_SIGNATURES.clear()
+
+                await asyncio.sleep(10)  # انتظار 10 ثواني بين الدورات لتقليل الضغط
                 
             except Exception as e:
                 print(f"⚠️ {panel_name}: Loop error - {e}")
-                await asyncio.sleep(10)
+                # إذا حدث خطأ في المتصفح، نحاول إعادة فتحه
+                if "session" in str(e).lower() or "disconnected" in str(e).lower():
+                    print(f"🔄 {panel_name}: Browser disconnected, restarting...")
+                    break 
+                await asyncio.sleep(15)
                 
     except Exception as e:
         error_msg = f"❌ **{panel_name} CRASHED**\n`{str(e)}`"
@@ -215,6 +232,9 @@ async def scrape_panel(account):
                 driver.quit()
             except:
                 pass
+        # إعادة تشغيل السكرابينج في حالة الانهيار بعد فترة
+        await asyncio.sleep(30)
+        await scrape_panel(account)
 
 # ==========================================
 # Main
@@ -222,9 +242,6 @@ async def scrape_panel(account):
 async def main():
     print(f"Starting {len(ACCOUNTS)} panels...")
     print(f"Sending to Telegram ID: {TARGET_TELEGRAM_ID}")
-    print("تأكد من:")
-    print("1. البوت مضاف للمجموعة كـ Admin")
-    print("2. الآيدي صحيح (يبدأ بـ -100 للمجموعات)")
     
     tasks = [scrape_panel(acc) for acc in ACCOUNTS]
     await asyncio.gather(*tasks)
