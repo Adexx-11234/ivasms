@@ -39,14 +39,13 @@ def start_browser(panel_name):
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    # إضافة User-Agent حقيقي لتجنب الحظر
+    # استخدام User-Agent حديث جداً
     options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
     
     print(f"🚀 {panel_name}: Starting Browser...")
     try:
-        # استخدام use_subprocess=True مهم جداً في Docker
         driver = uc.Chrome(options=options, use_subprocess=True)
-        driver.set_page_load_timeout(60) # زيادة وقت تحميل الصفحة
+        driver.set_page_load_timeout(90)
         return driver
     except Exception as e:
         print(f"❌ {panel_name} Browser Error: {e}")
@@ -61,12 +60,18 @@ def login_ivasms(driver, panel_name, email, password):
     for attempt in range(1, 4):
         try:
             driver.get(IVASMS_LOGIN_URL)
+            time.sleep(10) # وقت إضافي لتخطي أي Cloudflare Challenge
             
-            # انتظار ظهور حقل الإيميل (بحد أقصى 30 ثانية)
-            wait = WebDriverWait(driver, 30)
-            email_field = wait.until(EC.presence_of_element_located((By.NAME, "email")))
-            
-            print(f"📝 {panel_name}: Entering credentials (Attempt {attempt})...")
+            # محاولة البحث عن حقل الإيميل بطرق مختلفة
+            wait = WebDriverWait(driver, 40)
+            try:
+                email_field = wait.until(EC.presence_of_element_located((By.NAME, "email")))
+            except:
+                # إذا فشل، ربما الصفحة لم تحمل بالكامل أو هناك iframe
+                print(f"🔍 {panel_name}: Email field not found by name, trying alternative selectors...")
+                email_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='email']")))
+
+            print(f"📝 {panel_name}: Entering credentials...")
             email_field.clear()
             email_field.send_keys(email)
             
@@ -77,21 +82,20 @@ def login_ivasms(driver, panel_name, email, password):
             login_btn = driver.find_element(By.XPATH, "//button[@type='submit']")
             driver.execute_script("arguments[0].click();", login_btn)
             
-            # انتظار الانتقال لصفحة الـ portal
-            time.sleep(10)
+            time.sleep(15) # وقت كافٍ للانتقال بعد الضغط
             
             if "portal" in driver.current_url:
                 print(f"✅ {panel_name}: Login successful")
                 return True
             else:
                 print(f"⚠️ {panel_name}: Login failed, current URL: {driver.current_url}")
+                # حفظ لقطة شاشة للديبرج في حالة الفشل (اختياري)
+                # driver.save_screenshot(f"fail_{panel_name}_{attempt}.png")
                 
-        except TimeoutException:
-            print(f"⏳ {panel_name}: Timeout waiting for login page elements (Attempt {attempt})")
         except Exception as e:
             print(f"⚠️ {panel_name}: Attempt {attempt} error - {e}")
         
-        time.sleep(5)
+        time.sleep(10)
     
     return False
 
@@ -99,20 +103,12 @@ def navigate_to_live_page(driver, panel_name):
     print(f"🌍 {panel_name}: Navigating to live page...")
     try:
         driver.get(IVASMS_LIVE_URL)
-        wait = WebDriverWait(driver, 30)
-        # التأكد من وجود الجدول في الصفحة
+        wait = WebDriverWait(driver, 40)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
         return True
     except Exception as e:
         print(f"❌ {panel_name}: Navigation error - {e}")
         return False
-
-# ==========================================
-# Message Processing
-# ==========================================
-def extract_otp(text):
-    match = re.search(r'\b(\d{4,8})\b', text)
-    return match.group(1) if match else None
 
 # ==========================================
 # Scraping Function
@@ -123,7 +119,7 @@ async def scrape_panel(account):
     password = account['pass']
     driver = None
     
-    while True: # حلقة لإعادة التشغيل في حالة الانهيار
+    while True:
         try:
             if not driver:
                 driver = start_browser(panel_name)
@@ -139,9 +135,9 @@ async def scrape_panel(account):
             while True:
                 try:
                     driver.refresh()
-                    time.sleep(5)
+                    time.sleep(7)
                     
-                    wait = WebDriverWait(driver, 20)
+                    wait = WebDriverWait(driver, 30)
                     rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table/tbody/tr")))
                     
                     for row in rows[:10]:
@@ -156,7 +152,8 @@ async def scrape_panel(account):
                                 msg_id = f"{panel_name}_{phone}_{message[:50]}"
                                 
                                 if msg_id not in PROCESSED_SIGNATURES:
-                                    otp = extract_otp(message)
+                                    otp_match = re.search(r'\b(\d{4,8})\b', message)
+                                    otp = otp_match.group(1) if otp_match else None
                                     time_now = datetime.now().strftime("%H:%M:%S")
                                     
                                     if otp:
@@ -183,13 +180,13 @@ async def scrape_panel(account):
                     if len(PROCESSED_SIGNATURES) > 1000:
                         PROCESSED_SIGNATURES.clear()
                         
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(15)
                     
                 except Exception as e:
                     print(f"⚠️ {panel_name} Loop Error: {e}")
                     if "session" in str(e).lower() or "disconnected" in str(e).lower():
-                        break # كسر الحلقة الداخلية لإعادة تشغيل المتصفح
-                    await asyncio.sleep(10)
+                        break
+                    await asyncio.sleep(15)
                     
         except Exception as e:
             error_msg = f"❌ **{panel_name} CRASHED**\n`{str(e)}`"
