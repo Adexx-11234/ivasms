@@ -14,12 +14,12 @@ from selenium.webdriver.support import expected_conditions as EC
 # ==========================================
 # Configuration
 # ==========================================
-API_ID = int(os.environ.get('API_ID', 33419175))
-API_HASH = os.environ.get('API_HASH', '556aa0a8ac62e9cb31ca8b4a9b390d3f')
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '8731084809:AAHocpvW1ckCo4FdCDTJ5hzaAl156F5eiOQ')
-TARGET_TELEGRAM_ID = int(os.environ.get('TARGET_TELEGRAM_ID', -1003857054415))
+API_ID = int(os.environ.get('API_ID', 32539066))
+API_HASH = os.environ.get('API_HASH', '4d72c410dc6b02426a1ee395ec96a575')
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '8552768265:AAGPWm3N-VGXDEfj1PPNDsUJY6H8EvqAmfc')
+TARGET_TELEGRAM_ID = int(os.environ.get('TARGET_TELEGRAM_ID', -1003566283028))
 
-ACCOUNTS_JSON = os.environ.get('ACCOUNTS', '[{"name":"Panel_1","email":"mohamedsamy3450@gmail.com","pass":"0102068678Soso"}]')
+ACCOUNTS_JSON = os.environ.get('ACCOUNTS', '[{"name":"Panel_1","email":"paulfarayola2006@gmail.com","pass":"i9T*$Qv.!sW$8ne"}]')
 ACCOUNTS = json.loads(ACCOUNTS_JSON)
 
 # Proxy Configuration
